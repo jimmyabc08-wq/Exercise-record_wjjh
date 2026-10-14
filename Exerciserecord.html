@@ -1,0 +1,1828 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全校跑操場雲端即時系統 | 701-906</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: #f8fafc;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.8; }
+            80%, 100% { transform: scale(2.2); opacity: 0; }
+        }
+        .live-dot::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 9999px;
+            background-color: #10b981;
+            animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        .card-pop {
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .card-pop:active {
+            transform: scale(0.97);
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Simulation Preview Bar (Helps test the 2 separate URLs right inside Preview) -->
+    <div id="urlSimulatorBar" class="bg-slate-900 text-slate-200 px-3 py-1.5 text-xs border-b border-slate-700">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                    <i class="fa-solid fa-link mr-1"></i>雙網址分流預覽列
+                </span>
+                <span class="hidden md:inline text-slate-400">當前模擬網址參數：</span>
+                <code id="currentSimulatedUrlBadge" class="px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[11px]">?role=teacher&class=701</code>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <span class="text-slate-400 hidden sm:inline">點擊測試不同連結視角：</span>
+                <button type="button" onclick="window.simulateOpenUrl('teacher')" id="simBtnTeacher" class="px-2.5 py-1 rounded-lg font-bold transition bg-emerald-600 text-white">
+                    1. 老師/股長登錄連結 (?role=teacher)
+                </button>
+                <button type="button" onclick="window.simulateOpenUrl('parent')" id="simBtnParent" class="px-2.5 py-1 rounded-lg font-bold transition bg-slate-800 text-slate-300 hover:bg-slate-700">
+                    2. 家長/學生專用連結 (?role=parent)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Navigation Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                
+                <!-- Brand & Live Sync Status -->
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div id="brandIconBox" class="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md shadow-emerald-200">
+                            <i class="fa-solid fa-person-running text-xl"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <h1 id="appHeaderTitle" class="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900">校園跑操場雲端即時系統</h1>
+                                <span id="roleModeHeaderPill" class="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    老師/股長後台
+                                </span>
+                                <span class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <span class="relative flex h-2 w-2">
+                                        <span class="live-dot relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                    </span>
+                                    <span id="syncStatusText">雲端即時同步中</span>
+                                </span>
+                            </div>
+                            <p id="appHeaderSubtitle" class="text-xs text-slate-500">701-906 全校 19 班 • 老師與體育股長專屬登錄後台</p>
+                        </div>
+                    </div>
+
+                    <!-- Mobile Sync Indicator -->
+                    <div class="sm:hidden flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span class="relative flex h-2 w-2">
+                            <span class="live-dot relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span id="syncStatusTextMobile">即時</span>
+                    </div>
+                </div>
+
+                <!-- Date Picker & Teacher Link Generator / Controls -->
+                <div class="flex flex-wrap items-center justify-between sm:justify-end gap-2 sm:gap-2.5">
+                    <!-- Date Selector -->
+                    <div class="flex items-center bg-slate-100 rounded-xl px-2.5 py-1.5 border border-slate-200">
+                        <i class="fa-regular fa-calendar-days text-slate-500 text-sm mr-2"></i>
+                        <input type="date" id="datePicker" class="bg-transparent text-xs sm:text-sm font-semibold text-slate-700 focus:outline-none cursor-pointer">
+                        <button type="button" id="todayBtn" class="ml-2 text-xs bg-white hover:bg-slate-50 text-emerald-600 font-bold px-2 py-0.5 rounded-lg border border-slate-200 shadow-sm transition">
+                            今日
+                        </button>
+                    </div>
+
+                    <!-- Teacher-Only Controls: Share Links & Settings & Lock -->
+                    <div id="teacherHeaderControls" class="flex items-center gap-2">
+                        <button type="button" onclick="window.openShareLinksModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-sm shadow-indigo-200 transition active:scale-95">
+                            <i class="fa-solid fa-share-nodes"></i>
+                            <span>取得分流連結 / QR Code</span>
+                        </button>
+
+                        <button type="button" onclick="window.openSettingsModal()" class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 transition" title="操場規格與通行碼設定">
+                            <i class="fa-solid fa-gear"></i>
+                        </button>
+
+                        <button type="button" onclick="window.lockTeacherSession()" class="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition" title="鎖定登錄權限">
+                            <i class="fa-solid fa-lock"></i>
+                        </button>
+                    </div>
+
+                    <!-- Parent-Only Badge -->
+                    <div id="parentHeaderControls" class="hidden items-center gap-2">
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            <i class="fa-solid fa-shield-heart"></i>
+                            <span>家長與學生專屬即時看板</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Navigation Tabs -->
+            <nav class="flex space-x-1 sm:space-x-2 mt-3 pt-2 border-t border-slate-100 overflow-x-auto no-scrollbar">
+                <button type="button" onclick="window.switchTab('checkin')" id="tabBtn-checkin" class="tab-btn flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <i id="tabIcon-checkin" class="fa-solid fa-stopwatch-20"></i>
+                    <span id="tabText-checkin">極速登錄台</span>
+                </button>
+                <button type="button" onclick="window.switchTab('leaderboard')" id="tabBtn-leaderboard" class="tab-btn flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 border border-transparent">
+                    <i class="fa-solid fa-trophy text-amber-500"></i>
+                    <span>全校即時排行榜</span>
+                </button>
+                <button type="button" onclick="window.switchTab('taiwan')" id="tabBtn-taiwan" class="tab-btn flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 border border-transparent">
+                    <i class="fa-solid fa-map-location-dot text-teal-600"></i>
+                    <span>跑向台灣・環島地圖</span>
+                </button>
+                <button type="button" onclick="window.switchTab('portal')" id="tabBtn-portal" class="tab-btn flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 border border-transparent">
+                    <i class="fa-solid fa-id-card-clip text-indigo-500"></i>
+                    <span id="tabText-portal">個人查詢 & 報表匯出</span>
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Parent Exclusive Clean Welcome Banner (Only visible in ?role=parent) -->
+    <div id="parentModeBanner" class="hidden bg-gradient-to-r from-indigo-600 to-teal-600 text-white px-4 py-2.5 text-xs sm:text-sm font-medium shadow-inner">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-satellite-dish animate-pulse"></i>
+                <span>歡迎來到<strong>「家長與學生即時運動看板」</strong>！當孩子在操場跑完加圈時，此畫面將即時同步更新。</span>
+            </div>
+            <span class="text-[11px] bg-white/15 px-2.5 py-0.5 rounded-full border border-white/20 flex-shrink-0 self-start sm:self-auto">
+                <i class="fa-solid fa-lock mr-1"></i>純瀏覽唯讀模式
+            </span>
+        </div>
+    </div>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+
+        <!-- Shared Class Selector Bar (701-906) -->
+        <section id="classSelectorSection" class="bg-white rounded-2xl p-3 sm:p-4 shadow-sm border border-slate-200 mb-5">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">班級切換</span>
+                    <span class="text-xs text-slate-500">點擊切換 701–906 班（綠點代表今日已有跑步紀錄）</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <button type="button" onclick="window.setGradeFilter('all')" id="gradeFilter-all" class="px-3 py-1 rounded-lg text-xs font-bold bg-slate-800 text-white transition">全部 (19班)</button>
+                    <button type="button" onclick="window.setGradeFilter('7')" id="gradeFilter-7" class="px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">七年級</button>
+                    <button type="button" onclick="window.setGradeFilter('8')" id="gradeFilter-8" class="px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">八年級</button>
+                    <button type="button" onclick="window.setGradeFilter('9')" id="gradeFilter-9" class="px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">九年級</button>
+                </div>
+            </div>
+            <div id="classPillsContainer" class="flex flex-wrap gap-1.5 sm:gap-2 pt-3"></div>
+        </section>
+
+        <!-- ==========================================
+             TAB 1: 極速登錄台 / 班級即時看板
+             ========================================== -->
+        <section id="tabContent-checkin" class="space-y-5">
+            <!-- KPI Summary Cards -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-500">當前檢視班級</span>
+                        <span id="currentDateDisplay" class="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">2026-10-14</span>
+                    </div>
+                    <div class="mt-2 flex items-baseline gap-2">
+                        <span id="currentClassBadge" class="text-2xl sm:text-3xl font-black text-slate-900">701 班</span>
+                        <span class="text-xs text-slate-400">每圈 <strong id="trackMetersHint">200m</strong></span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">今日目標：<strong id="targetLapsHint" class="text-emerald-600">5 圈</strong></p>
+                </div>
+
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-500">今日開跑人數</span>
+                        <i class="fa-solid fa-users text-emerald-500"></i>
+                    </div>
+                    <div id="statClassAttendance" class="mt-2 text-2xl sm:text-3xl font-black text-slate-900">0 / 30</div>
+                    <p id="statClassAttendanceSub" class="text-xs text-slate-500 mt-1">全班 30 人 (請假 0 人)</p>
+                </div>
+
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-500">本班今日達標率</span>
+                        <i class="fa-solid fa-medal text-amber-500"></i>
+                    </div>
+                    <div id="statClassAchieved" class="mt-2 text-2xl sm:text-3xl font-black text-emerald-600">0%</div>
+                    <p id="statClassAchievedSub" class="text-xs text-slate-500 mt-1">0 人已跑滿 5 圈</p>
+                </div>
+
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-500">本班今日總圈數</span>
+                        <span id="statSchoolTodayKm" class="text-[11px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">全校 0.0 km</span>
+                    </div>
+                    <div id="statClassTotalLaps" class="mt-2 text-2xl sm:text-3xl font-black text-slate-900">0 圈</div>
+                    <p id="statClassTotalKm" class="text-xs text-slate-500 mt-1">折合 0.00 公里 (0m)</p>
+                </div>
+            </div>
+
+            <!-- Filter & Teacher Batch Action Toolbar -->
+            <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                <!-- Left: Filter Student Status & Quick Search -->
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="text-xs font-bold text-slate-400 mr-1 flex-shrink-0"><i class="fa-solid fa-filter mr-1"></i>篩選:</span>
+                    <button type="button" onclick="window.setStudentFilter('all')" id="stuFilter-all" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white transition flex-shrink-0">全部學生</button>
+                    <button type="button" onclick="window.setStudentFilter('unstarted')" id="stuFilter-unstarted" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition flex-shrink-0">尚未開跑</button>
+                    <button type="button" onclick="window.setStudentFilter('running')" id="stuFilter-running" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition flex-shrink-0">進行中</button>
+                    <button type="button" onclick="window.setStudentFilter('achieved')" id="stuFilter-achieved" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition flex-shrink-0">今日已達標</button>
+                    
+                    <!-- Quick Student Search Input -->
+                    <div class="relative ml-auto sm:ml-2 flex-1 sm:flex-initial min-w-[160px]">
+                        <i class="fa-solid fa-magnifying-glass text-slate-400 text-xs absolute left-3 top-1/2 -translate-y-1/2"></i>
+                        <input type="text" id="studentSearchInput" oninput="window.handleStudentSearch(this.value)" placeholder="搜尋座號或姓名..." class="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                </div>
+
+                <!-- Right: Teacher Batch Actions -->
+                <div id="teacherActionToolbar" class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="window.batchAddLapAllPresent()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-bolt"></i>
+                        <span>全班出席 +1 圈</span>
+                    </button>
+                    <button type="button" onclick="window.openRosterModal()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-user-pen"></i>
+                        <span>編輯本班名單</span>
+                    </button>
+                    <button type="button" onclick="window.confirmResetClassToday()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-rotate-left"></i>
+                        <span>歸零今日</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Student Grid Cards -->
+            <div id="studentGridContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"></div>
+        </section>
+
+        <!-- ==========================================
+             TAB 2: 全校即時排行榜 (Leaderboard)
+             ========================================== -->
+        <section id="tabContent-leaderboard" class="hidden space-y-5">
+            <!-- Filter Grade & Demo Data Generator -->
+            <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <button type="button" onclick="window.setLeaderboardGrade('all')" id="lbGrade-all" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 text-white shadow-sm transition">全校總排行 (19班)</button>
+                    <button type="button" onclick="window.setLeaderboardGrade('7')" id="lbGrade-7" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">七年級 (701-707)</button>
+                    <button type="button" onclick="window.setLeaderboardGrade('8')" id="lbGrade-8" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">八年級 (801-806)</button>
+                    <button type="button" onclick="window.setLeaderboardGrade('9')" id="lbGrade-9" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">九年級 (901-906)</button>
+                </div>
+
+                <button type="button" id="simulateDemoBtn" onclick="window.simulateSchoolActivity()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>模擬全校各班今日跑步數據 (展示用)</span>
+                </button>
+            </div>
+
+            <!-- Grade PK Summary Cards -->
+            <div id="gradePkContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+
+            <!-- Class Ranking List -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                    <h3 class="font-black text-slate-800 text-base"><i class="fa-solid fa-ranking-star text-amber-500 mr-2"></i>各班今日總里程與達標排行榜</h3>
+                    <span class="text-xs text-slate-400">依今日總圈數排序</span>
+                </div>
+                <div id="leaderboardTableBody" class="divide-y divide-slate-100"></div>
+            </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 3: 跑向台灣・環島地圖 (Taiwan Map)
+             ========================================== -->
+        <section id="tabContent-taiwan" class="hidden space-y-5">
+            <div class="bg-gradient-to-br from-teal-700 via-emerald-700 to-slate-900 rounded-3xl p-5 sm:p-7 text-white shadow-lg">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <span class="px-3 py-1 rounded-full text-xs font-bold bg-white/15 border border-white/20">遊戲化里程共創挑戰</span>
+                        <h2 class="text-2xl sm:text-3xl font-black mt-2">跑向台灣・環島一周 1,000 公里挑戰</h2>
+                        <p class="text-xs sm:text-sm text-emerald-100 mt-1">將全校或班級累積的每一圈操場化為真實公里數，一步一腳印完成台灣環島壯舉！</p>
+                    </div>
+                    <div class="flex items-center gap-2 bg-black/25 p-1.5 rounded-2xl border border-white/10 self-start">
+                        <button type="button" onclick="window.setTaiwanScope('school')" id="twScope-school" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-slate-900 shadow-sm transition">全校累積里程</button>
+                        <button type="button" onclick="window.setTaiwanScope('class')" id="twScope-class" class="px-3.5 py-2 rounded-xl text-xs font-bold text-white hover:bg-white/10 transition">本班累積里程</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+                    <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/15">
+                        <div class="text-xs text-emerald-200 font-bold">目前累積總里程</div>
+                        <div id="twTotalKm" class="text-3xl font-black mt-1">0.0 km</div>
+                        <div id="twTotalLapsSub" class="text-xs text-emerald-200 mt-1">累積 0 圈操場</div>
+                    </div>
+                    <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/15">
+                        <div class="text-xs text-emerald-200 font-bold">當前抵達站點</div>
+                        <div id="twCurrentStation" class="text-2xl font-black mt-1">📍 台北出發站</div>
+                        <div id="twNextStationHint" class="text-xs text-emerald-200 mt-1">距離下一站還差 75 km</div>
+                    </div>
+                    <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/15">
+                        <div class="text-xs text-emerald-200 font-bold">環島完成進度 (每圈 1,000 km)</div>
+                        <div id="twLoopProgress" class="text-3xl font-black mt-1">0.0%</div>
+                        <div class="w-full h-2.5 bg-black/30 rounded-full overflow-hidden mt-2">
+                            <div id="twProgressBar" class="h-full bg-amber-400 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Taiwan 10 Checkpoints Grid -->
+            <div id="taiwanCheckpointsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5"></div>
+        </section>
+
+        <!-- ==========================================
+             TAB 4: 個人查詢 & 報表匯出 (Portal & Export)
+             ========================================== -->
+        <section id="tabContent-portal" class="hidden space-y-5">
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h3 class="text-lg font-black text-slate-900">班級個人體能存摺 & Excel 統計報表</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">檢視 <strong id="portalClassLabel" class="text-emerald-700">701 班</strong> 每位學生的今日表現與歷史累積里程，支援匯出 UTF-8 BOM CSV 檔案（Excel 直接開啟不亂碼）。</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="window.exportCurrentClassCSV()" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition flex items-center gap-2">
+                        <i class="fa-solid fa-file-csv"></i>
+                        <span>匯出本班 Excel (CSV)</span>
+                    </button>
+                    <button type="button" onclick="window.exportWholeSchoolCSV()" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-800 hover:bg-slate-900 text-white shadow-sm transition flex items-center gap-2">
+                        <i class="fa-solid fa-school"></i>
+                        <span>匯出全校 19 班總表</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500">
+                                <th class="py-3 px-4">座號</th>
+                                <th class="py-3 px-4">學生姓名</th>
+                                <th class="py-3 px-4">今日狀態</th>
+                                <th class="py-3 px-4">今日圈數 / 里程</th>
+                                <th class="py-3 px-4">歷史累積總圈數 / 總公里</th>
+                            </tr>
+                        </thead>
+                        <tbody id="portalStudentTableBody" class="divide-y divide-slate-100 text-xs sm:text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ==========================================
+         MODAL 1: 編輯班級人數與學生姓名名單 (Roster Modal)
+         ========================================== -->
+    <div id="rosterModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-lg font-black text-slate-900"><i class="fa-solid fa-users-gear text-emerald-600 mr-1.5"></i>編輯 <span id="rosterModalClassTitle">701</span> 班學生名單</h3>
+                <button type="button" onclick="window.closeRosterModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">本班總人數 (1–50人)</label>
+                    <input type="number" id="rosterCountInput" min="1" max="50" value="30" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold text-slate-800">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">批量貼上學生姓名（一行一個名字，依序對應 1 號、2 號...）</label>
+                    <textarea id="rosterNamesTextarea" rows="7" placeholder="王小明&#10;陳小華&#10;林美玲..." class="w-full rounded-xl border border-slate-300 p-3 text-xs font-mono text-slate-700 focus:outline-none focus:border-emerald-500"></textarea>
+                    <p class="text-[11px] text-slate-400 mt-1">留空則預設顯示「01號同學、02號同學...」</p>
+                </div>
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-2">
+                <button type="button" onclick="window.closeRosterModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
+                <button type="button" onclick="window.saveRosterChanges()" class="px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm">儲存本班名單</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         MODAL 2: 操場規格與每日目標設定 (Settings)
+         ========================================== -->
+    <div id="settingsModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-lg font-black text-slate-900"><i class="fa-solid fa-sliders text-emerald-600 mr-1.5"></i>學校操場規格與通行碼設定</h3>
+                <button type="button" onclick="window.closeSettingsModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">操場單圈長度 (公尺)</label>
+                    <select id="settingTrackMeters" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold text-slate-800">
+                        <option value="200">200 公尺 (標準國中/國小操場)</option>
+                        <option value="300">300 公尺</option>
+                        <option value="400">400 公尺 (標準田徑場)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">學生每日達標目標圈數</label>
+                    <input type="number" id="settingTargetLaps" min="1" max="30" value="5" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold text-slate-800">
+                    <p class="text-[11px] text-slate-400 mt-1">預設 5 圈 × 200 公尺 = 每日 1 公里 (1,000m)</p>
+                </div>
+                <div class="pt-2 border-t border-slate-100">
+                    <label class="block text-xs font-bold text-slate-700 mb-1">老師 / 體育股長登錄通行碼 (PIN)</label>
+                    <input type="text" id="settingTeacherPin" maxlength="8" value="8888" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold text-slate-800 font-mono">
+                    <p class="text-[11px] text-slate-400 mt-1">防止學生自行將網址改為 <code class="bg-slate-100 px-1 rounded">?role=teacher</code> 偷改圈數（預設為 <code class="font-bold text-slate-600">8888</code>）</p>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-2 pt-2">
+                <button type="button" onclick="window.closeSettingsModal()" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
+                <button type="button" onclick="window.saveSettingsChanges()" class="px-5 py-2 rounded-xl text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm">儲存設定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         MODAL 3: 確認對話框 (Custom Confirm Modal)
+         ========================================== -->
+    <div id="confirmModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <h3 id="confirmModalTitle" class="text-base font-black text-slate-900">確認操作</h3>
+            <p id="confirmModalDesc" class="text-xs text-slate-600 leading-relaxed"></p>
+            <div class="flex items-center justify-end gap-2 pt-2">
+                <button type="button" onclick="window.closeConfirmModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
+                <button type="button" id="confirmModalActionBtn" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700">確定執行</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         MODAL 4: 專屬分流連結與 QR Code 產生器 (Share Links Modal)
+         ========================================== -->
+    <div id="shareLinksModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-3xl max-w-3xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 space-y-5 my-8">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div>
+                    <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">雙網址權限分流中心</span>
+                    <h3 class="text-lg sm:text-xl font-black text-slate-900 mt-1">老師股長登錄 vs 家長學生看板 專屬連結</h3>
+                </div>
+                <button type="button" onclick="window.closeShareLinksModal()" class="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Optional Class Filter for Parent Link -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div class="text-xs sm:text-sm font-bold text-slate-700">
+                    <i class="fa-solid fa-bullseye text-emerald-600 mr-1.5"></i>選擇要預設開啟的班級（方便發給各班家長 LINE 群組）：
+                </div>
+                <select id="shareLinkClassSelect" onchange="window.updateGeneratedShareLinks()" class="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs sm:text-sm font-black text-emerald-700 focus:outline-none">
+                    <option value="701">指定開啟 701 班</option>
+                </select>
+            </div>
+
+            <!-- Two Links Cards Side by Side -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <!-- Card A: Parent / Student Read-Only Link -->
+                <div class="rounded-2xl border-2 border-indigo-200 bg-indigo-50/40 p-4 flex flex-col justify-between space-y-4">
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="px-2.5 py-1 rounded-lg text-xs font-black bg-indigo-600 text-white">
+                                <i class="fa-solid fa-eye mr-1"></i>給家長 / 學生看的連結
+                            </span>
+                            <span class="text-[11px] font-bold text-indigo-600">純唯讀・隱藏後台</span>
+                        </div>
+                        <h4 class="text-base font-black text-slate-900">家長與學生即時運動看板</h4>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            點開此連結時，系統會<strong>強制鎖定在「唯讀看板模式」</strong>，完全隱藏加圈按鈕與模式切換器，最適合貼在班級家長 LINE 群組或班網！
+                        </p>
+                        <div class="bg-white p-2.5 rounded-xl border border-indigo-200">
+                            <p class="text-[10px] font-bold text-slate-400 mb-0.5">專屬看板網址參數：</p>
+                            <input id="parentShareUrlInput" type="text" readonly class="w-full text-xs font-mono text-indigo-700 bg-transparent focus:outline-none select-all" value="">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 pt-2 border-t border-indigo-100">
+                        <img id="parentQrImg" src="" alt="Parent QR Code" class="w-20 h-20 rounded-xl border border-slate-200 bg-white p-1 flex-shrink-0" onerror="this.style.display='none'">
+                        <div class="flex-1 space-y-2">
+                            <button type="button" onclick="window.copyShareLink('parentShareUrlInput', '家長/學生看板連結')" class="w-full py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5">
+                                <i class="fa-regular fa-copy"></i>
+                                <span>複製家長看板連結</span>
+                            </button>
+                            <button type="button" onclick="window.simulateOpenUrl('parent'); window.closeShareLinksModal();" class="w-full py-1.5 px-3 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-xs transition">
+                                立即預覽家長端畫面
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card B: Teacher / Sport Leader Admin Link -->
+                <div class="rounded-2xl border-2 border-emerald-200 bg-emerald-50/40 p-4 flex flex-col justify-between space-y-4">
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="px-2.5 py-1 rounded-lg text-xs font-black bg-emerald-600 text-white">
+                                <i class="fa-solid fa-clipboard-check mr-1"></i>給老師 / 股長記圈的連結
+                            </span>
+                            <span class="text-[11px] font-bold text-emerald-700">支援 PIN 碼保護</span>
+                        </div>
+                        <h4 class="text-base font-black text-slate-900">老師與體育股長極速登錄台</h4>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            專供操場旁平板或老師手機使用。具備<strong>通行碼驗證鎖（預設 <code id="shareModalPinDisplay" class="font-bold text-emerald-700">8888</code>）</strong>，即使學生猜到網址也無法未經授權加圈！
+                        </p>
+                        <div class="bg-white p-2.5 rounded-xl border border-emerald-200">
+                            <p class="text-[10px] font-bold text-slate-400 mb-0.5">專屬登錄網址參數：</p>
+                            <input id="teacherShareUrlInput" type="text" readonly class="w-full text-xs font-mono text-emerald-700 bg-transparent focus:outline-none select-all" value="">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 pt-2 border-t border-emerald-100">
+                        <img id="teacherQrImg" src="" alt="Teacher QR Code" class="w-20 h-20 rounded-xl border border-slate-200 bg-white p-1 flex-shrink-0" onerror="this.style.display='none'">
+                        <div class="flex-1 space-y-2">
+                            <button type="button" onclick="window.copyShareLink('teacherShareUrlInput', '老師/體育股長登錄連結')" class="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5">
+                                <i class="fa-regular fa-copy"></i>
+                                <span>複製老師登錄連結</span>
+                            </button>
+                            <button type="button" onclick="window.simulateOpenUrl('teacher'); window.closeShareLinksModal();" class="w-full py-1.5 px-3 rounded-xl bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs transition">
+                                立即預覽老師端畫面
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="flex items-center justify-between pt-2 text-xs text-slate-400">
+                <span>💡 提示：將此 HTML 檔案放到學校網站、GitHub Pages 或 Firebase Hosting 後，直接加上 <code class="text-slate-600 font-mono">?role=parent</code> 與 <code class="text-slate-600 font-mono">?role=teacher</code> 即可自動分流。</span>
+                <button type="button" onclick="window.closeShareLinksModal()" class="px-4 py-2 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 flex-shrink-0 ml-2">關閉視窗</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         MODAL 5: 老師/體育股長 PIN 通行碼解鎖視窗
+         ========================================== -->
+    <div id="pinAuthModal" class="fixed inset-0 z-50 hidden bg-slate-900/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-center">
+            <div class="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl mx-auto shadow-inner">
+                <i class="fa-solid fa-user-shield"></i>
+            </div>
+            <div>
+                <span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full">老師與體育股長專區</span>
+                <h3 class="text-lg font-black text-slate-900 mt-1">請輸入登錄通行碼</h3>
+                <p class="text-xs text-slate-500 mt-1">輸入正確通行碼即可解鎖全校 19 班圈數登錄權限（預設通行碼：<strong class="text-slate-700">8888</strong>）</p>
+            </div>
+
+            <div>
+                <input type="password" id="pinCodeInput" maxlength="8" placeholder="••••" 
+                       onkeydown="if(event.key==='Enter') window.verifyTeacherPin()"
+                       class="w-full text-center text-2xl font-black tracking-[0.5em] rounded-2xl border-2 border-slate-200 py-3 px-4 focus:outline-none focus:border-emerald-500 text-slate-800">
+                <p id="pinErrorMsg" class="hidden text-xs font-bold text-rose-600 mt-2"><i class="fa-solid fa-circle-exclamation mr-1"></i>通行碼錯誤，請重新輸入！</p>
+            </div>
+
+            <div class="flex items-center gap-2 pt-1">
+                <button type="button" onclick="window.simulateOpenUrl('parent'); window.closePinAuthModal();" class="flex-1 py-2.5 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition">
+                    改去家長看板
+                </button>
+                <button type="button" onclick="window.verifyTeacherPin()" class="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition">
+                    解鎖登錄台
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ==========================================
+        // 1. SCHOOL CONSTANTS (19 CLASSES: 701-906)
+        // ==========================================
+        const GRADE_GROUPS = {
+            '7': ['701', '702', '703', '704', '705', '706', '707'],
+            '8': ['801', '802', '803', '804', '805', '806'],
+            '9': ['901', '902', '903', '904', '905', '906']
+        };
+        const ALL_CLASSES = [...GRADE_GROUPS['7'], ...GRADE_GROUPS['8'], ...GRADE_GROUPS['9']];
+
+        const TAIWAN_CHECKPOINTS = [
+            { name: '台北出發站', km: 0, icon: 'fa-building-columns', desc: '活力起跑！邁開健康第一步' },
+            { name: '新竹風城站', km: 75, icon: 'fa-wind', desc: '迎風前行，養成每日運動習慣' },
+            { name: '台中太陽站', km: 165, icon: 'fa-sun', desc: '熱情累積，跨越中台灣大關' },
+            { name: '嘉義阿里山', km: 260, icon: 'fa-train', desc: '耐力考驗，北回歸線上的汗水' },
+            { name: '台南古都站', km: 325, icon: 'fa-landmark', desc: '文化古都，突破三百公里里程碑' },
+            { name: '高雄港都站', km: 375, icon: 'fa-anchor', desc: '抵達南台灣！完成西半部縱走' },
+            { name: '屏東鵝鑾鼻', km: 490, icon: 'fa-lightbulb', desc: '台灣最南端燈塔，準備北上東海岸' },
+            { name: '台東鹿野站', km: 640, icon: 'fa-parachute-box', desc: '熱氣球升空！馳騁花東縱谷' },
+            { name: '花蓮太魯閣', km: 810, icon: 'fa-mountain-sun', desc: '壯麗峽谷，距離環島完賽僅一步之遙' },
+            { name: '宜蘭蘭陽站', km: 920, icon: 'fa-water', desc: '穿越雪山隧道，成功環島凱旋歸來！' }
+        ];
+
+        const LOCAL_STORAGE_KEY = 'school_track_cloud_v2';
+
+        function getTodayDateString() {
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        // ==========================================
+        // 2. APPLICATION STATE
+        // ==========================================
+        const state = {
+            role: 'teacher',          // 'teacher' | 'parent'
+            teacherAuthorized: true,  // Whether teacher PIN is unlocked
+            activeTab: 'checkin',     // 'checkin' | 'leaderboard' | 'taiwan' | 'portal'
+            selectedDate: getTodayDateString(),
+            selectedClass: '701',
+            gradeSelectorFilter: 'all', // 'all' | '7' | '8' | '9'
+            studentStatusFilter: 'all', // 'all' | 'unstarted' | 'running' | 'achieved'
+            studentSearchQuery: '',     // Search seat or student name
+            leaderboardGrade: 'all',    // 'all' | '7' | '8' | '9'
+            taiwanScope: 'school',      // 'school' | 'class'
+            config: {
+                trackMeters: 200,
+                targetLaps: 5,
+                teacherPin: '8888'
+            },
+            rosters: {},              // { '701': { count: 30, names: {} } }
+            allLogs: {},              // { '2026-10-14_701': { date, classId, laps: {'1': 5}, leave: {'2': true} } }
+            user: null,
+            firebaseReady: false
+        };
+
+        ALL_CLASSES.forEach(cls => {
+            state.rosters[cls] = { count: 30, names: {} };
+        });
+
+        // Load from localStorage fallback
+        function loadFromLocalStorage() {
+            try {
+                const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (parsed.config) state.config = { ...state.config, ...parsed.config };
+                if (parsed.rosters) state.rosters = { ...state.rosters, ...parsed.rosters };
+                if (parsed.allLogs) state.allLogs = { ...state.allLogs, ...parsed.allLogs };
+            } catch (e) {
+                console.warn('LocalStorage read failed:', e);
+            }
+        }
+
+        function saveToLocalStorage() {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+                    config: state.config,
+                    rosters: state.rosters,
+                    allLogs: state.allLogs
+                }));
+            } catch (e) {
+                console.warn('LocalStorage write failed:', e);
+            }
+        }
+
+        // Parse URL Query / Hash Parameters to route between Teacher vs Parent views
+        function applyUrlRoutingFromLocation() {
+            const params = new URLSearchParams(window.location.search);
+            const hash = window.location.hash.toLowerCase();
+            const roleParam = (params.get('role') || params.get('mode') || '').toLowerCase();
+            const classParam = params.get('class');
+
+            if (classParam && ALL_CLASSES.includes(classParam)) {
+                state.selectedClass = classParam;
+            }
+
+            if (roleParam === 'parent' || roleParam === 'student' || hash.includes('parent') || hash.includes('student')) {
+                state.role = 'parent';
+                if (roleParam === 'parent' || roleParam === 'student') {
+                    const simBar = document.getElementById('urlSimulatorBar');
+                    if (simBar) simBar.classList.add('hidden');
+                }
+            } else if (roleParam === 'teacher' || hash.includes('teacher')) {
+                state.role = 'teacher';
+                state.teacherAuthorized = false; // Require PIN when entering via ?role=teacher URL parameter
+            }
+        }
+
+        // ==========================================
+        // 3. FIREBASE REALTIME CLOUD SYNC
+        // ==========================================
+        let db = null;
+        let auth = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'school-run-701-906';
+
+        async function initFirebase() {
+            try {
+                if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+                    updateSyncBadge('本機即時儲存模式', true);
+                    return;
+                }
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    state.user = user;
+                    if (user) {
+                        state.firebaseReady = true;
+                        updateSyncBadge('Firebase 雲端即時同步中', true);
+                        setupCloudListeners();
+                    }
+                });
+            } catch (err) {
+                console.warn('Firebase fallback to LocalStorage:', err);
+                updateSyncBadge('本機即時儲存模式', true);
+            }
+        }
+
+        function updateSyncBadge(text, isOnline) {
+            const el = document.getElementById('syncStatusText');
+            if (el) el.textContent = text;
+            const mobileEl = document.getElementById('syncStatusTextMobile');
+            if (mobileEl) mobileEl.textContent = isOnline ? '即時' : '離線';
+        }
+
+        function setupCloudListeners() {
+            if (!db || !state.user) return;
+
+            const logsCol = collection(db, 'artifacts', appId, 'public', 'data', 'daily_logs');
+            onSnapshot(logsCol, (snapshot) => {
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    state.allLogs[docSnap.id] = {
+                        date: data.date,
+                        classId: data.classId,
+                        laps: data.laps ? JSON.parse(data.laps) : {},
+                        leave: data.leave ? JSON.parse(data.leave) : {}
+                    };
+                });
+                saveToLocalStorage();
+                renderAllActiveViews();
+            }, (error) => {
+                console.error("Error listening to daily_logs:", error);
+            });
+
+            const metaCol = collection(db, 'artifacts', appId, 'public', 'data', 'class_meta');
+            onSnapshot(metaCol, (snapshot) => {
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    const docId = docSnap.id;
+                    if (docId === 'school_settings') {
+                        if (data.trackMeters) state.config.trackMeters = Number(data.trackMeters);
+                        if (data.targetLaps) state.config.targetLaps = Number(data.targetLaps);
+                        if (data.teacherPin) state.config.teacherPin = String(data.teacherPin);
+                    } else if (docId.startsWith('roster_')) {
+                        const cls = docId.replace('roster_', '');
+                        if (ALL_CLASSES.includes(cls)) {
+                            state.rosters[cls] = {
+                                count: Number(data.count) || 30,
+                                names: data.names ? JSON.parse(data.names) : {}
+                            };
+                        }
+                    }
+                });
+                saveToLocalStorage();
+                renderAllActiveViews();
+            }, (error) => {
+                console.error("Error listening to class_meta:", error);
+            });
+        }
+
+        async function saveClassLogToCloud(dateStr, classId, logObj) {
+            const key = `${dateStr}_${classId}`;
+            state.allLogs[key] = logObj;
+            saveToLocalStorage();
+            renderAllActiveViews();
+
+            if (state.firebaseReady && state.user && db) {
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_logs', key);
+                    await setDoc(docRef, {
+                        date: dateStr,
+                        classId: classId,
+                        laps: JSON.stringify(logObj.laps || {}),
+                        leave: JSON.stringify(logObj.leave || {}),
+                        updatedAt: Date.now()
+                    });
+                } catch (e) {
+                    console.error('Cloud sync write error:', e);
+                }
+            }
+        }
+
+        // ==========================================
+        // 4. DATA CALCULATION HELPERS
+        // ==========================================
+        function getClassLog(dateStr, classId) {
+            const key = `${dateStr}_${classId}`;
+            if (!state.allLogs[key]) {
+                state.allLogs[key] = { date: dateStr, classId, laps: {}, leave: {} };
+            }
+            return state.allLogs[key];
+        }
+
+        function getStudentName(classId, seatNum) {
+            const roster = state.rosters[classId];
+            const customName = roster && roster.names && roster.names[String(seatNum)];
+            if (customName && customName.trim() !== '') return customName.trim();
+            return `${String(seatNum).padStart(2, '0')}號同學`;
+        }
+
+        function computeClassDayStats(dateStr, classId) {
+            const roster = state.rosters[classId] || { count: 30 };
+            const count = roster.count || 30;
+            const log = getClassLog(dateStr, classId);
+            const target = state.config.targetLaps;
+
+            let totalLaps = 0;
+            let leaveCount = 0;
+            let startedCount = 0;
+            let achievedCount = 0;
+
+            for (let s = 1; s <= count; s++) {
+                const seatKey = String(s);
+                const isLeave = Boolean(log.leave && log.leave[seatKey]);
+                const laps = Number((log.laps && log.laps[seatKey]) || 0);
+                if (isLeave) {
+                    leaveCount++;
+                } else {
+                    totalLaps += laps;
+                    if (laps > 0) startedCount++;
+                    if (laps >= target) achievedCount++;
+                }
+            }
+
+            const activeStudentCount = Math.max(1, count - leaveCount);
+            const achieveRate = Math.round((achievedCount / activeStudentCount) * 100);
+            const totalMeters = totalLaps * state.config.trackMeters;
+            const totalKm = totalMeters / 1000;
+
+            return {
+                count,
+                leaveCount,
+                activeStudentCount,
+                startedCount,
+                achievedCount,
+                achieveRate,
+                totalLaps,
+                totalMeters,
+                totalKm
+            };
+        }
+
+        function computeStudentCumulativeLaps(classId, seatNum) {
+            const seatKey = String(seatNum);
+            let sumLaps = 0;
+            Object.values(state.allLogs).forEach(log => {
+                if (log && log.classId === classId && log.laps && log.laps[seatKey]) {
+                    if (!(log.leave && log.leave[seatKey])) {
+                        sumLaps += Number(log.laps[seatKey]) || 0;
+                    }
+                }
+            });
+            return sumLaps;
+        }
+
+        // ==========================================
+        // 5. USER INTERACTIONS & MUTATIONS
+        // ==========================================
+        function checkTeacherPermission() {
+            if (state.role !== 'teacher') {
+                showToast('此為家長與學生唯讀看板，無法修改資料', 'indigo');
+                return false;
+            }
+            if (!state.teacherAuthorized) {
+                window.openPinAuthModal();
+                return false;
+            }
+            return true;
+        }
+
+        window.adjustStudentLap = function(seatNum, delta) {
+            if (!checkTeacherPermission()) return;
+            const log = getClassLog(state.selectedDate, state.selectedClass);
+            const seatKey = String(seatNum);
+
+            if (log.leave && log.leave[seatKey]) {
+                showToast(`${seatNum}號目前標記為「請假免跑」，請先取消請假再加圈`, 'amber');
+                return;
+            }
+
+            const current = Number((log.laps && log.laps[seatKey]) || 0);
+            const next = Math.max(0, current + delta);
+            if (!log.laps) log.laps = {};
+            log.laps[seatKey] = next;
+
+            saveClassLogToCloud(state.selectedDate, state.selectedClass, log);
+        };
+
+        window.toggleStudentLeave = function(seatNum) {
+            if (!checkTeacherPermission()) return;
+            const log = getClassLog(state.selectedDate, state.selectedClass);
+            const seatKey = String(seatNum);
+            if (!log.leave) log.leave = {};
+            log.leave[seatKey] = !log.leave[seatKey];
+
+            saveClassLogToCloud(state.selectedDate, state.selectedClass, log);
+        };
+
+        window.batchAddLapAllPresent = function() {
+            if (!checkTeacherPermission()) return;
+            const roster = state.rosters[state.selectedClass] || { count: 30 };
+            const log = getClassLog(state.selectedDate, state.selectedClass);
+            if (!log.laps) log.laps = {};
+
+            for (let s = 1; s <= roster.count; s++) {
+                const seatKey = String(s);
+                if (!(log.leave && log.leave[seatKey])) {
+                    log.laps[seatKey] = Number(log.laps[seatKey] || 0) + 1;
+                }
+            }
+            saveClassLogToCloud(state.selectedDate, state.selectedClass, log);
+            showToast(`已為 ${state.selectedClass} 班全體出席同學 +1 圈！`, 'emerald');
+        };
+
+        let pendingConfirmCallback = null;
+        function openConfirmModal(title, desc, onConfirm) {
+            document.getElementById('confirmModalTitle').textContent = title;
+            document.getElementById('confirmModalDesc').textContent = desc;
+            pendingConfirmCallback = onConfirm;
+            document.getElementById('confirmModal').classList.remove('hidden');
+        }
+
+        window.closeConfirmModal = function() {
+            document.getElementById('confirmModal').classList.add('hidden');
+            pendingConfirmCallback = null;
+        };
+
+        document.getElementById('confirmModalActionBtn').addEventListener('click', () => {
+            if (typeof pendingConfirmCallback === 'function') {
+                pendingConfirmCallback();
+            }
+            window.closeConfirmModal();
+        });
+
+        window.confirmResetClassToday = function() {
+            if (!checkTeacherPermission()) return;
+            openConfirmModal(
+                `歸零重設 ${state.selectedClass} 班今日紀錄？`,
+                `這將會把 ${state.selectedDate} 當日 ${state.selectedClass} 班所有同學的圈數與請假狀態歸零。`,
+                () => {
+                    const emptyLog = {
+                        date: state.selectedDate,
+                        classId: state.selectedClass,
+                        laps: {},
+                        leave: {}
+                    };
+                    saveClassLogToCloud(state.selectedDate, state.selectedClass, emptyLog);
+                    showToast(`已重設 ${state.selectedClass} 班今日紀錄`, 'rose');
+                }
+            );
+        };
+
+        window.simulateSchoolActivity = function() {
+            if (!checkTeacherPermission()) return;
+            ALL_CLASSES.forEach(cls => {
+                const roster = state.rosters[cls] || { count: 30 };
+                const laps = {};
+                const leave = {};
+                for (let s = 1; s <= roster.count; s++) {
+                    if (Math.random() < 0.04) {
+                        leave[String(s)] = true;
+                    } else {
+                        laps[String(s)] = Math.floor(Math.random() * 8) + 1;
+                    }
+                }
+                const logObj = { date: state.selectedDate, classId: cls, laps, leave };
+                state.allLogs[`${state.selectedDate}_${cls}`] = logObj;
+                if (state.firebaseReady && state.user && db) {
+                    saveClassLogToCloud(state.selectedDate, cls, logObj);
+                }
+            });
+            saveToLocalStorage();
+            renderAllActiveViews();
+            showToast('已成功生成全校 19 個班級今日模擬跑步數據！', 'emerald');
+        };
+
+        // ==========================================
+        // 6. UI RENDERING FUNCTIONS
+        // ==========================================
+        function renderAllActiveViews() {
+            syncRoleHeaderUI();
+            renderClassSelectorBar();
+            renderCheckinDashboard();
+            renderLeaderboardTab();
+            renderTaiwanMapTab();
+            renderPortalTab();
+        }
+
+        function syncRoleHeaderUI() {
+            const isTeacher = state.role === 'teacher';
+            const teacherControls = document.getElementById('teacherHeaderControls');
+            const parentControls = document.getElementById('parentHeaderControls');
+            const parentBanner = document.getElementById('parentModeBanner');
+            const rolePill = document.getElementById('roleModeHeaderPill');
+            const subtitle = document.getElementById('appHeaderSubtitle');
+            const tabCheckinText = document.getElementById('tabText-checkin');
+            const tabCheckinIcon = document.getElementById('tabIcon-checkin');
+            const simDemoBtn = document.getElementById('simulateDemoBtn');
+            const simBtnTeacher = document.getElementById('simBtnTeacher');
+            const simBtnParent = document.getElementById('simBtnParent');
+            const currentUrlBadge = document.getElementById('currentSimulatedUrlBadge');
+
+            if (isTeacher) {
+                if (teacherControls) {
+                    teacherControls.classList.remove('hidden');
+                    teacherControls.classList.add('flex');
+                }
+                if (parentControls) parentControls.classList.add('hidden');
+                if (parentBanner) parentBanner.classList.add('hidden');
+                if (rolePill) {
+                    rolePill.textContent = state.teacherAuthorized ? '老師/股長後台 (已解鎖)' : '老師/股長後台 (待驗證)';
+                    rolePill.className = 'px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200';
+                }
+                if (subtitle) subtitle.textContent = '701-906 全校 19 班 • 老師與體育股長專屬登錄後台';
+                if (tabCheckinText) tabCheckinText.textContent = '極速登錄台';
+                if (tabCheckinIcon) tabCheckinIcon.className = 'fa-solid fa-stopwatch-20';
+                if (simDemoBtn) simDemoBtn.style.display = 'inline-flex';
+                if (simBtnTeacher) simBtnTeacher.className = 'px-2.5 py-1 rounded-lg font-bold transition bg-emerald-600 text-white';
+                if (simBtnParent) simBtnParent.className = 'px-2.5 py-1 rounded-lg font-bold transition bg-slate-800 text-slate-300 hover:bg-slate-700';
+                if (currentUrlBadge) currentUrlBadge.textContent = `?role=teacher&class=${state.selectedClass}`;
+            } else {
+                if (teacherControls) {
+                    teacherControls.classList.add('hidden');
+                    teacherControls.classList.remove('flex');
+                }
+                if (parentControls) {
+                    parentControls.classList.remove('hidden');
+                    parentControls.classList.add('flex');
+                }
+                if (parentBanner) parentBanner.classList.remove('hidden');
+                if (rolePill) {
+                    rolePill.textContent = '家長與學生看板';
+                    rolePill.className = 'px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-indigo-100 text-indigo-800 border border-indigo-200';
+                }
+                if (subtitle) subtitle.textContent = '701-906 全校 19 班 • 家長與學生即時運動看板';
+                if (tabCheckinText) tabCheckinText.textContent = '班級即時看板';
+                if (tabCheckinIcon) tabCheckinIcon.className = 'fa-solid fa-users-viewfinder';
+                if (simDemoBtn) simDemoBtn.style.display = 'none';
+                if (simBtnParent) simBtnParent.className = 'px-2.5 py-1 rounded-lg font-bold transition bg-indigo-600 text-white';
+                if (simBtnTeacher) simBtnTeacher.className = 'px-2.5 py-1 rounded-lg font-bold transition bg-slate-800 text-slate-300 hover:bg-slate-700';
+                if (currentUrlBadge) currentUrlBadge.textContent = `?role=parent&class=${state.selectedClass}`;
+            }
+        }
+
+        function renderClassSelectorBar() {
+            const container = document.getElementById('classPillsContainer');
+            if (!container) return;
+
+            ['all', '7', '8', '9'].forEach(g => {
+                const btn = document.getElementById(`gradeFilter-${g}`);
+                if (!btn) return;
+                if (state.gradeSelectorFilter === g) {
+                    btn.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-slate-800 text-white transition';
+                } else {
+                    btn.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition';
+                }
+            });
+
+            const classesToShow = state.gradeSelectorFilter === 'all'
+                ? ALL_CLASSES
+                : (GRADE_GROUPS[state.gradeSelectorFilter] || ALL_CLASSES);
+
+            container.innerHTML = classesToShow.map(cls => {
+                const isSelected = cls === state.selectedClass;
+                const stats = computeClassDayStats(state.selectedDate, cls);
+                const hasData = stats.totalLaps > 0;
+
+                if (isSelected) {
+                    return `
+                        <button type="button" onclick="window.selectClass('${cls}')" class="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black bg-emerald-600 text-white shadow-sm shadow-emerald-200 flex items-center gap-1.5 transition">
+                            <span>${cls}班</span>
+                            <span class="px-1.5 py-0.5 text-[10px] rounded-md bg-white/20 text-white">${stats.achieveRate}%</span>
+                        </button>
+                    `;
+                } else {
+                    return `
+                        <button type="button" onclick="window.selectClass('${cls}')" class="px-3 py-2 rounded-xl text-xs sm:text-sm font-bold ${hasData ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-transparent'} hover:bg-slate-200 flex items-center gap-1.5 transition">
+                            <span>${cls}</span>
+                            ${hasData ? `<span class="w-2 h-2 rounded-full bg-emerald-500"></span>` : ''}
+                        </button>
+                    `;
+                }
+            }).join('');
+        }
+
+        function renderCheckinDashboard() {
+            const stats = computeClassDayStats(state.selectedDate, state.selectedClass);
+            const log = getClassLog(state.selectedDate, state.selectedClass);
+            const target = state.config.targetLaps;
+
+            let schoolTodayLaps = 0;
+            ALL_CLASSES.forEach(c => {
+                schoolTodayLaps += computeClassDayStats(state.selectedDate, c).totalLaps;
+            });
+            const schoolTodayKm = ((schoolTodayLaps * state.config.trackMeters) / 1000).toFixed(1);
+
+            const elClassBadge = document.getElementById('currentClassBadge');
+            if (elClassBadge) elClassBadge.textContent = `${state.selectedClass} 班`;
+
+            const elDateDisp = document.getElementById('currentDateDisplay');
+            if (elDateDisp) elDateDisp.textContent = state.selectedDate;
+
+            const elAttendance = document.getElementById('statClassAttendance');
+            if (elAttendance) elAttendance.textContent = `${stats.startedCount} / ${stats.activeStudentCount}`;
+
+            const elAttendanceSub = document.getElementById('statClassAttendanceSub');
+            if (elAttendanceSub) elAttendanceSub.textContent = `全班 ${stats.count} 人 (請假 ${stats.leaveCount} 人)`;
+
+            const elAchieved = document.getElementById('statClassAchieved');
+            if (elAchieved) elAchieved.textContent = `${stats.achieveRate}%`;
+
+            const elAchievedSub = document.getElementById('statClassAchievedSub');
+            if (elAchievedSub) elAchievedSub.textContent = `${stats.achievedCount} 人已跑滿 ${target} 圈`;
+
+            const elTotalLaps = document.getElementById('statClassTotalLaps');
+            if (elTotalLaps) elTotalLaps.textContent = `${stats.totalLaps} 圈`;
+
+            const elTotalKm = document.getElementById('statClassTotalKm');
+            if (elTotalKm) elTotalKm.textContent = `折合 ${stats.totalKm.toFixed(2)} 公里 (${stats.totalMeters}m)`;
+
+            const elSchoolKm = document.getElementById('statSchoolTodayKm');
+            if (elSchoolKm) elSchoolKm.textContent = `全校 ${schoolTodayKm} km`;
+
+            const elTargetHint = document.getElementById('targetLapsHint');
+            if (elTargetHint) elTargetHint.textContent = `${target} 圈`;
+
+            const elTrackHint = document.getElementById('trackMetersHint');
+            if (elTrackHint) elTrackHint.textContent = `${state.config.trackMeters}m`;
+
+            ['all', 'unstarted', 'running', 'achieved'].forEach(f => {
+                const btn = document.getElementById(`stuFilter-${f}`);
+                if (!btn) return;
+                if (state.studentStatusFilter === f) {
+                    btn.className = 'px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white transition flex-shrink-0';
+                } else {
+                    btn.className = 'px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition flex-shrink-0';
+                }
+            });
+
+            const toolbar = document.getElementById('teacherActionToolbar');
+            if (toolbar) {
+                toolbar.style.display = (state.role === 'teacher' && state.teacherAuthorized) ? 'flex' : 'none';
+            }
+
+            const grid = document.getElementById('studentGridContainer');
+            if (!grid) return;
+
+            const cardsHtml = [];
+            const query = (state.studentSearchQuery || '').trim().toLowerCase();
+            const canEdit = state.role === 'teacher' && state.teacherAuthorized;
+
+            for (let s = 1; s <= stats.count; s++) {
+                const seatKey = String(s);
+                const isLeave = Boolean(log.leave && log.leave[seatKey]);
+                const laps = Number((log.laps && log.laps[seatKey]) || 0);
+                const isAchieved = !isLeave && laps >= target;
+                const isRunning = !isLeave && laps > 0 && laps < target;
+                const isUnstarted = !isLeave && laps === 0;
+                const stuName = getStudentName(state.selectedClass, s);
+
+                if (state.studentStatusFilter === 'unstarted' && !isUnstarted) continue;
+                if (state.studentStatusFilter === 'running' && !isRunning) continue;
+                if (state.studentStatusFilter === 'achieved' && !isAchieved) continue;
+
+                if (query !== '') {
+                    const seatPad = String(s).padStart(2, '0');
+                    if (!seatKey.includes(query) && !seatPad.includes(query) && !stuName.toLowerCase().includes(query)) {
+                        continue;
+                    }
+                }
+
+                const progressPercent = isLeave ? 0 : Math.min(100, Math.round((laps / target) * 100));
+
+                let cardStyle = 'bg-white border-slate-200';
+                let badgeHtml = `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">尚未開跑</span>`;
+                let progressColor = 'bg-emerald-500';
+
+                if (isLeave) {
+                    cardStyle = 'bg-slate-50 border-slate-200 opacity-75';
+                    badgeHtml = `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">請假免跑</span>`;
+                } else if (isAchieved) {
+                    cardStyle = 'bg-emerald-50/60 border-emerald-300 shadow-sm shadow-emerald-100';
+                    badgeHtml = `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white"><i class="fa-solid fa-check mr-1"></i>已達標</span>`;
+                } else if (isRunning) {
+                    cardStyle = 'bg-white border-teal-300';
+                    badgeHtml = `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700">進行中</span>`;
+                    progressColor = 'bg-teal-500';
+                }
+
+                const actionButtonsHtml = canEdit ? `
+                    <div class="grid grid-cols-4 gap-1.5 pt-2 border-t border-slate-100">
+                        <button type="button" onclick="window.adjustStudentLap(${s}, -1)" class="col-span-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition active:scale-95" title="減 1 圈">-1</button>
+                        <button type="button" onclick="window.adjustStudentLap(${s}, 1)" class="col-span-2 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-sm transition active:scale-95">+1 圈</button>
+                        <button type="button" onclick="window.toggleStudentLeave(${s})" class="col-span-1 py-2 rounded-xl ${isLeave ? 'bg-amber-500 text-white' : 'bg-slate-100 hover:bg-amber-50 text-slate-500'} font-bold text-xs transition" title="切換請假">假</button>
+                    </div>
+                ` : '';
+
+                cardsHtml.push(`
+                    <div class="card-pop rounded-2xl border-2 p-3.5 flex flex-col justify-between space-y-2.5 ${cardStyle}">
+                        <div class="flex items-start justify-between gap-1">
+                            <div>
+                                <span class="text-xs font-black text-slate-400">#${String(s).padStart(2, '0')}</span>
+                                <h4 class="text-sm font-black text-slate-800 truncate max-w-[110px]">${stuName}</h4>
+                            </div>
+                            ${badgeHtml}
+                        </div>
+
+                        <div class="text-center py-1">
+                            <span class="text-3xl font-black ${isAchieved ? 'text-emerald-600' : 'text-slate-900'}">${laps}</span>
+                            <span class="text-xs font-bold text-slate-400">/ ${target} 圈</span>
+                            <div class="text-[11px] text-slate-400">${laps * state.config.trackMeters} 公尺</div>
+                        </div>
+
+                        <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div class="h-full ${progressColor} rounded-full transition-all duration-300" style="width: ${progressPercent}%"></div>
+                        </div>
+
+                        ${actionButtonsHtml}
+                    </div>
+                `);
+            }
+
+            if (cardsHtml.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full bg-white rounded-2xl p-8 text-center border border-slate-200 text-slate-400 text-sm font-bold">
+                        沒有符合篩選條件的學生紀錄
+                    </div>
+                `;
+            } else {
+                grid.innerHTML = cardsHtml.join('');
+            }
+        }
+
+        function renderLeaderboardTab() {
+            ['all', '7', '8', '9'].forEach(g => {
+                const btn = document.getElementById(`lbGrade-${g}`);
+                if (!btn) return;
+                if (state.leaderboardGrade === g) {
+                    btn.className = 'px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 text-white shadow-sm transition';
+                } else {
+                    btn.className = 'px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition';
+                }
+            });
+
+            // Grade PK cards
+            const gradePkEl = document.getElementById('gradePkContainer');
+            if (gradePkEl) {
+                const gradeTitles = { '7': '七年級 (701-707)', '8': '八年級 (801-806)', '9': '九年級 (901-906)' };
+                gradePkEl.innerHTML = ['7', '8', '9'].map(g => {
+                    const clsList = GRADE_GROUPS[g];
+                    let sumLaps = 0;
+                    let sumAchieve = 0;
+                    clsList.forEach(c => {
+                        const st = computeClassDayStats(state.selectedDate, c);
+                        sumLaps += st.totalLaps;
+                        sumAchieve += st.achieveRate;
+                    });
+                    const avgRate = Math.round(sumAchieve / clsList.length);
+                    const sumKm = ((sumLaps * state.config.trackMeters) / 1000).toFixed(1);
+                    return `
+                        <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between">
+                            <div>
+                                <span class="text-xs font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg">${gradeTitles[g]}</span>
+                                <div class="text-2xl font-black text-slate-900 mt-2">${sumKm} 公里 <span class="text-xs font-bold text-slate-400">(${sumLaps} 圈)</span></div>
+                                <div class="text-xs text-slate-500 mt-0.5">平均班級達標率：<strong class="text-emerald-600">${avgRate}%</strong></div>
+                            </div>
+                            <div class="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-700 font-black text-lg">${g}年級</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            const targetClasses = state.leaderboardGrade === 'all'
+                ? ALL_CLASSES
+                : (GRADE_GROUPS[state.leaderboardGrade] || ALL_CLASSES);
+
+            const ranked = targetClasses.map(cls => {
+                const st = computeClassDayStats(state.selectedDate, cls);
+                return { classId: cls, ...st };
+            }).sort((a, b) => b.totalLaps - a.totalLaps || b.achieveRate - a.achieveRate);
+
+            const maxLaps = Math.max(10, ...ranked.map(r => r.totalLaps));
+            const tbody = document.getElementById('leaderboardTableBody');
+            if (!tbody) return;
+
+            tbody.innerHTML = ranked.map((item, idx) => {
+                const rank = idx + 1;
+                let rankBadge = `<span class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 font-black text-xs flex items-center justify-center">${rank}</span>`;
+                if (rank === 1) rankBadge = `<span class="w-7 h-7 rounded-full bg-amber-400 text-white font-black text-xs flex items-center justify-center shadow-sm"><i class="fa-solid fa-crown"></i></span>`;
+                else if (rank === 2) rankBadge = `<span class="w-7 h-7 rounded-full bg-slate-300 text-slate-800 font-black text-xs flex items-center justify-center">2</span>`;
+                else if (rank === 3) rankBadge = `<span class="w-7 h-7 rounded-full bg-amber-700 text-white font-black text-xs flex items-center justify-center">3</span>`;
+
+                const barWidth = Math.round((item.totalLaps / maxLaps) * 100);
+                return `
+                    <div class="px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-50 transition">
+                        <div class="flex items-center gap-3 min-w-[160px]">
+                            ${rankBadge}
+                            <div>
+                                <div class="font-black text-slate-900 text-sm">${item.classId} 班</div>
+                                <div class="text-[11px] text-slate-400">達標 ${item.achievedCount}/${item.activeStudentCount} 人 (${item.achieveRate}%)</div>
+                            </div>
+                        </div>
+                        <div class="flex-1 max-w-md">
+                            <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full" style="width: ${barWidth}%"></div>
+                            </div>
+                        </div>
+                        <div class="text-right min-w-[120px]">
+                            <span class="text-base font-black text-slate-900">${item.totalLaps} 圈</span>
+                            <span class="text-xs font-bold text-emerald-600 ml-1">(${item.totalKm.toFixed(2)} km)</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderTaiwanMapTab() {
+            const isSchool = state.taiwanScope === 'school';
+            document.getElementById('twScope-school').className = isSchool
+                ? 'px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-slate-900 shadow-sm transition'
+                : 'px-3.5 py-2 rounded-xl text-xs font-bold text-white hover:bg-white/10 transition';
+            document.getElementById('twScope-class').className = !isSchool
+                ? 'px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-slate-900 shadow-sm transition'
+                : 'px-3.5 py-2 rounded-xl text-xs font-bold text-white hover:bg-white/10 transition';
+
+            let totalLaps = 0;
+            Object.values(state.allLogs).forEach(log => {
+                if (!log || !log.laps) return;
+                if (!isSchool && log.classId !== state.selectedClass) return;
+                Object.entries(log.laps).forEach(([seat, l]) => {
+                    if (!(log.leave && log.leave[seat])) {
+                        totalLaps += Number(l) || 0;
+                    }
+                });
+            });
+
+            const totalKm = (totalLaps * state.config.trackMeters) / 1000;
+            const currentLoopKm = totalKm % 1000;
+            const progressPct = Math.min(100, (currentLoopKm / 1000) * 100);
+
+            let currentStation = TAIWAN_CHECKPOINTS[0];
+            let nextStation = TAIWAN_CHECKPOINTS[1];
+            for (let i = 0; i < TAIWAN_CHECKPOINTS.length; i++) {
+                if (currentLoopKm >= TAIWAN_CHECKPOINTS[i].km) {
+                    currentStation = TAIWAN_CHECKPOINTS[i];
+                    nextStation = TAIWAN_CHECKPOINTS[i + 1] || { name: '台北凱旋終點', km: 1000 };
+                }
+            }
+
+            document.getElementById('twTotalKm').textContent = `${totalKm.toFixed(1)} km`;
+            document.getElementById('twTotalLapsSub').textContent = `${isSchool ? '全校 19 班' : state.selectedClass + ' 班'}累積 ${totalLaps} 圈操場`;
+            document.getElementById('twCurrentStation').textContent = `📍 ${currentStation.name}`;
+            document.getElementById('twNextStationHint').textContent = `距離「${nextStation.name}」還差 ${Math.max(0, nextStation.km - currentLoopKm).toFixed(1)} km`;
+            document.getElementById('twLoopProgress').textContent = `${progressPct.toFixed(1)}%`;
+            document.getElementById('twProgressBar').style.width = `${progressPct}%`;
+
+            const grid = document.getElementById('taiwanCheckpointsGrid');
+            if (!grid) return;
+            grid.innerHTML = TAIWAN_CHECKPOINTS.map(cp => {
+                const unlocked = currentLoopKm >= cp.km || totalKm >= 1000;
+                return `
+                    <div class="rounded-2xl p-4 border-2 transition ${unlocked ? 'bg-white border-emerald-400 shadow-sm' : 'bg-slate-100/70 border-slate-200 opacity-60'}">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-black ${unlocked ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-200'} px-2 py-0.5 rounded-md">${cp.km} km</span>
+                            <i class="fa-solid ${unlocked ? 'fa-circle-check text-emerald-500' : 'fa-lock text-slate-400'}"></i>
+                        </div>
+                        <div class="mt-3 flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl ${unlocked ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'} flex items-center justify-center">
+                                <i class="fa-solid ${cp.icon}"></i>
+                            </div>
+                            <h4 class="font-black text-slate-900 text-sm">${cp.name}</h4>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-2">${cp.desc}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderPortalTab() {
+            document.getElementById('portalClassLabel').textContent = `${state.selectedClass} 班`;
+            const roster = state.rosters[state.selectedClass] || { count: 30 };
+            const log = getClassLog(state.selectedDate, state.selectedClass);
+            const target = state.config.targetLaps;
+            const tbody = document.getElementById('portalStudentTableBody');
+            if (!tbody) return;
+
+            const rows = [];
+            for (let s = 1; s <= roster.count; s++) {
+                const seatKey = String(s);
+                const name = getStudentName(state.selectedClass, s);
+                const isLeave = Boolean(log.leave && log.leave[seatKey]);
+                const todayLaps = Number((log.laps && log.laps[seatKey]) || 0);
+                const todayKm = ((todayLaps * state.config.trackMeters) / 1000).toFixed(2);
+                const cumLaps = computeStudentCumulativeLaps(state.selectedClass, s);
+                const cumKm = ((cumLaps * state.config.trackMeters) / 1000).toFixed(2);
+
+                let statusHtml = `<span class="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500">未開跑</span>`;
+                if (isLeave) statusHtml = `<span class="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">請假免跑</span>`;
+                else if (todayLaps >= target) statusHtml = `<span class="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">今日達標</span>`;
+                else if (todayLaps > 0) statusHtml = `<span class="px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700">進行中</span>`;
+
+                rows.push(`
+                    <tr class="hover:bg-slate-50">
+                        <td class="py-3 px-4 font-black text-slate-700">#${String(s).padStart(2, '0')}</td>
+                        <td class="py-3 px-4 font-bold text-slate-900">${name}</td>
+                        <td class="py-3 px-4">${statusHtml}</td>
+                        <td class="py-3 px-4 font-bold text-slate-800">${todayLaps} 圈 <span class="text-slate-400 font-normal">(${todayKm} km)</span></td>
+                        <td class="py-3 px-4 font-black text-emerald-700">${cumLaps} 圈 <span class="text-slate-400 font-normal">(${cumKm} km)</span></td>
+                    </tr>
+                `);
+            }
+            tbody.innerHTML = rows.join('');
+        }
+
+        // ==========================================
+        // 7. NAVIGATION, FILTERS & MODALS
+        // ==========================================
+        window.simulateOpenUrl = function(targetRole) {
+            try {
+                const newUrl = `${window.location.pathname}?role=${targetRole}&class=${state.selectedClass}`;
+                window.history.replaceState({}, '', newUrl);
+            } catch (e) {
+                // Ignore history security restrictions inside sandboxed iframe
+            }
+
+            if (targetRole === 'parent') {
+                state.role = 'parent';
+                showToast('已模擬開啟「家長與學生專用看板連結 (?role=parent)」', 'indigo');
+            } else {
+                state.role = 'teacher';
+                if (!state.teacherAuthorized) {
+                    window.openPinAuthModal();
+                } else {
+                    showToast('已模擬開啟「老師與體育股長登錄連結 (?role=teacher)」', 'emerald');
+                }
+            }
+            renderAllActiveViews();
+        };
+
+        window.handleStudentSearch = function(val) {
+            state.studentSearchQuery = val || '';
+            renderCheckinDashboard();
+        };
+
+        window.lockTeacherSession = function() {
+            state.teacherAuthorized = false;
+            renderAllActiveViews();
+            window.openPinAuthModal();
+            showToast('已鎖定登錄台權限，需輸入通行碼才可修改', 'amber');
+        };
+
+        window.openPinAuthModal = function() {
+            const modal = document.getElementById('pinAuthModal');
+            const input = document.getElementById('pinCodeInput');
+            const err = document.getElementById('pinErrorMsg');
+            if (err) err.classList.add('hidden');
+            if (input) input.value = '';
+            if (modal) modal.classList.remove('hidden');
+            setTimeout(() => { if (input) input.focus(); }, 100);
+        };
+
+        window.closePinAuthModal = function() {
+            document.getElementById('pinAuthModal').classList.add('hidden');
+        };
+
+        window.verifyTeacherPin = function() {
+            const input = document.getElementById('pinCodeInput');
+            const err = document.getElementById('pinErrorMsg');
+            const entered = (input.value || '').trim();
+            if (entered === state.config.teacherPin) {
+                state.teacherAuthorized = true;
+                window.closePinAuthModal();
+                renderAllActiveViews();
+                showToast('通行碼驗證成功！已解鎖登錄權限', 'emerald');
+            } else {
+                if (err) err.classList.remove('hidden');
+                input.value = '';
+                input.focus();
+            }
+        };
+
+        window.openShareLinksModal = function() {
+            const select = document.getElementById('shareLinkClassSelect');
+            if (select) {
+                select.innerHTML = ALL_CLASSES.map(c => `<option value="${c}">指定開啟 ${c} 班看板</option>`).join('');
+                select.value = state.selectedClass;
+            }
+            document.getElementById('shareModalPinDisplay').textContent = state.config.teacherPin;
+            window.updateGeneratedShareLinks();
+            document.getElementById('shareLinksModal').classList.remove('hidden');
+        };
+
+        window.closeShareLinksModal = function() {
+            document.getElementById('shareLinksModal').classList.add('hidden');
+        };
+
+        window.updateGeneratedShareLinks = function() {
+            const baseUrl = window.location.href.split('?')[0].split('#')[0];
+            const selectedCls = document.getElementById('shareLinkClassSelect').value || state.selectedClass;
+            const classQuery = selectedCls ? `&class=${selectedCls}` : '';
+
+            const parentUrl = `${baseUrl}?role=parent${classQuery}`;
+            const teacherUrl = `${baseUrl}?role=teacher${classQuery}`;
+
+            document.getElementById('parentShareUrlInput').value = parentUrl;
+            document.getElementById('teacherShareUrlInput').value = teacherUrl;
+
+            const qrApi = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=';
+            document.getElementById('parentQrImg').src = qrApi + encodeURIComponent(parentUrl);
+            document.getElementById('teacherQrImg').src = qrApi + encodeURIComponent(teacherUrl);
+        };
+
+        window.copyShareLink = function(inputId, label) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            input.select();
+            input.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                showToast(`已複製「${label}」！可直接貼到 LINE 群組`, 'emerald');
+            } catch (err) {
+                showToast('請手動全選網址複製', 'amber');
+            }
+        };
+
+        window.switchTab = function(tabName) {
+            state.activeTab = tabName;
+            ['checkin', 'leaderboard', 'taiwan', 'portal'].forEach(t => {
+                const section = document.getElementById(`tabContent-${t}`);
+                const btn = document.getElementById(`tabBtn-${t}`);
+                if (section) section.classList.toggle('hidden', t !== tabName);
+                if (btn) {
+                    if (t === tabName) {
+                        btn.className = 'tab-btn flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all bg-emerald-50 text-emerald-700 border border-emerald-200';
+                    } else {
+                        btn.className = 'tab-btn flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 border border-transparent';
+                    }
+                }
+            });
+            renderAllActiveViews();
+        };
+
+        window.selectClass = function(classId) {
+            if (!ALL_CLASSES.includes(classId)) return;
+            state.selectedClass = classId;
+            renderAllActiveViews();
+        };
+
+        window.setGradeFilter = function(grade) {
+            state.gradeSelectorFilter = grade;
+            renderClassSelectorBar();
+        };
+
+        window.setStudentFilter = function(filter) {
+            state.studentStatusFilter = filter;
+            renderCheckinDashboard();
+        };
+
+        window.setLeaderboardGrade = function(grade) {
+            state.leaderboardGrade = grade;
+            renderLeaderboardTab();
+        };
+
+        window.setTaiwanScope = function(scope) {
+            state.taiwanScope = scope;
+            renderTaiwanMapTab();
+        };
+
+        // Roster Modal
+        window.openRosterModal = function() {
+            if (!checkTeacherPermission()) return;
+            const roster = state.rosters[state.selectedClass] || { count: 30, names: {} };
+            document.getElementById('rosterModalClassTitle').textContent = state.selectedClass;
+            document.getElementById('rosterCountInput').value = roster.count || 30;
+            const lines = [];
+            for (let i = 1; i <= (roster.count || 30); i++) {
+                lines.push((roster.names && roster.names[String(i)]) || '');
+            }
+            document.getElementById('rosterNamesTextarea').value = lines.join('\n').trimEnd();
+            document.getElementById('rosterModal').classList.remove('hidden');
+        };
+
+        window.closeRosterModal = function() {
+            document.getElementById('rosterModal').classList.add('hidden');
+        };
+
+        window.saveRosterChanges = async function() {
+            const count = Math.min(50, Math.max(1, Number(document.getElementById('rosterCountInput').value) || 30));
+            const rawLines = document.getElementById('rosterNamesTextarea').value.split('\n');
+            const names = {};
+            rawLines.forEach((line, idx) => {
+                const trimmed = line.trim();
+                if (trimmed) names[String(idx + 1)] = trimmed;
+            });
+
+            state.rosters[state.selectedClass] = { count, names };
+            saveToLocalStorage();
+            window.closeRosterModal();
+            renderAllActiveViews();
+            showToast(`已更新 ${state.selectedClass} 班學生名單 (${count}人)`, 'emerald');
+
+            if (state.firebaseReady && state.user && db) {
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'class_meta', `roster_${state.selectedClass}`);
+                    await setDoc(docRef, { count, names: JSON.stringify(names), updatedAt: Date.now() });
+                } catch (e) {
+                    console.error('Error saving roster:', e);
+                }
+            }
+        };
+
+        // Settings Modal
+        window.openSettingsModal = function() {
+            if (!checkTeacherPermission()) return;
+            document.getElementById('settingTrackMeters').value = String(state.config.trackMeters);
+            document.getElementById('settingTargetLaps').value = state.config.targetLaps;
+            document.getElementById('settingTeacherPin').value = state.config.teacherPin || '8888';
+            document.getElementById('settingsModal').classList.remove('hidden');
+        };
+
+        window.closeSettingsModal = function() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        };
+
+        window.saveSettingsChanges = async function() {
+            const trackMeters = Number(document.getElementById('settingTrackMeters').value) || 200;
+            const targetLaps = Math.max(1, Number(document.getElementById('settingTargetLaps').value) || 5);
+            const teacherPin = (document.getElementById('settingTeacherPin').value || '8888').trim();
+            state.config.trackMeters = trackMeters;
+            state.config.targetLaps = targetLaps;
+            state.config.teacherPin = teacherPin;
+
+            saveToLocalStorage();
+            window.closeSettingsModal();
+            renderAllActiveViews();
+            showToast(`已儲存操場設定與通行碼 (${teacherPin})`, 'emerald');
+
+            if (state.firebaseReady && state.user && db) {
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'class_meta', 'school_settings');
+                    await setDoc(docRef, { trackMeters, targetLaps, teacherPin, updatedAt: Date.now() });
+                } catch (e) {
+                    console.error("Error saving settings:", e);
+                }
+            }
+        };
+
+        // ==========================================
+        // 8. CSV EXCEL EXPORT & TOAST NOTIFICATION
+        // ==========================================
+        function downloadCSVFile(filename, rows) {
+            const csvContent = '\uFEFF' + rows.map(r => r.map(field => `"${String(field).replace(/"/g, '""')}"`).join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        window.exportCurrentClassCSV = function() {
+            const cls = state.selectedClass;
+            const roster = state.rosters[cls] || { count: 30 };
+            const log = getClassLog(state.selectedDate, cls);
+            const rows = [['日期', '班級', '座號', '姓名', '今日狀態', '今日圈數', '今日公尺數', '歷史累積總圈數', '歷史累積總公里']];
+
+            for (let s = 1; s <= roster.count; s++) {
+                const seatKey = String(s);
+                const isLeave = Boolean(log.leave && log.leave[seatKey]);
+                const laps = Number((log.laps && log.laps[seatKey]) || 0);
+                const cumLaps = computeStudentCumulativeLaps(cls, s);
+                const status = isLeave ? '請假免跑' : (laps >= state.config.targetLaps ? '已達標' : (laps > 0 ? '進行中' : '未開跑'));
+                rows.push([
+                    state.selectedDate,
+                    `${cls}班`,
+                    s,
+                    getStudentName(cls, s),
+                    status,
+                    laps,
+                    laps * state.config.trackMeters,
+                    cumLaps,
+                    ((cumLaps * state.config.trackMeters) / 1000).toFixed(2)
+                ]);
+            }
+            downloadCSVFile(`${state.selectedDate}_${cls}班跑操場紀錄表.csv`, rows);
+            showToast(`已匯出 ${cls} 班 CSV 報表！`, 'emerald');
+        };
+
+        window.exportWholeSchoolCSV = function() {
+            const rows = [['日期', '班級', '全班人數', '請假人數', '今日開跑人數', '今日達標人數', '今日達標率(%)', '今日總圈數', '今日總公里數']];
+            ALL_CLASSES.forEach(cls => {
+                const st = computeClassDayStats(state.selectedDate, cls);
+                rows.push([
+                    state.selectedDate,
+                    `${cls}班`,
+                    st.count,
+                    st.leaveCount,
+                    st.startedCount,
+                    st.achievedCount,
+                    st.achieveRate,
+                    st.totalLaps,
+                    st.totalKm.toFixed(2)
+                ]);
+            });
+            downloadCSVFile(`${state.selectedDate}_全校19班跑操場統計總表.csv`, rows);
+            showToast('已匯出全校 19 班統計總表！', 'emerald');
+        };
+
+        function showToast(message, color = 'emerald') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+            const colorMap = {
+                emerald: 'bg-emerald-600 text-white',
+                indigo: 'bg-indigo-600 text-white',
+                amber: 'bg-amber-600 text-white',
+                rose: 'bg-rose-600 text-white'
+            };
+            const toast = document.createElement('div');
+            toast.className = `px-4 py-2.5 rounded-2xl shadow-lg text-xs sm:text-sm font-bold flex items-center gap-2 transition-all duration-300 ${colorMap[color] || colorMap.emerald}`;
+            toast.innerHTML = `<i class="fa-solid fa-circle-info"></i><span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 2600);
+        }
+
+        // ==========================================
+        // 9. INITIALIZE ON WINDOW LOAD
+        // ==========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            loadFromLocalStorage();
+            applyUrlRoutingFromLocation();
+
+            const dateInput = document.getElementById('datePicker');
+            if (dateInput) {
+                dateInput.value = state.selectedDate;
+                dateInput.addEventListener('change', (e) => {
+                    if (e.target.value) {
+                        state.selectedDate = e.target.value;
+                        renderAllActiveViews();
+                    }
+                });
+            }
+
+            const todayBtn = document.getElementById('todayBtn');
+            if (todayBtn) {
+                todayBtn.addEventListener('click', () => {
+                    state.selectedDate = getTodayDateString();
+                    if (dateInput) dateInput.value = state.selectedDate;
+                    renderAllActiveViews();
+                    showToast('已切換回今日紀錄', 'emerald');
+                });
+            }
+
+            renderAllActiveViews();
+            if (state.role === 'teacher' && !state.teacherAuthorized) {
+                window.openPinAuthModal();
+            }
+            initFirebase();
+        });
+    </script>
+</body>
+</html>
